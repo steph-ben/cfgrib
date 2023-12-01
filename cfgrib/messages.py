@@ -530,6 +530,8 @@ class FileIndex(FieldsetIndex):
 
         hash = hashlib.md5(repr(index_keys).encode("utf-8")).hexdigest()
         indexpath = indexpath.format(path=filestream.path, hash=hash, short_hash=hash[:5])
+        from pathlib import Path
+        Path(indexpath).parent.mkdir(exist_ok=True, parents=True)
         try:
             with compat_create_exclusive(indexpath) as new_index_file:
                 self = cls.from_fieldset(filestream, index_keys, computed_keys)
@@ -552,7 +554,11 @@ class FileIndex(FieldsetIndex):
                 ):
                     return self
                 else:
-                    log.warning("Ignoring index file %r incompatible with GRIB file", indexpath)
+                    log.warning("Index file looks %r incompatible with GRIB file", indexpath)
+                    log.warning(f"{self.index_keys=} == {index_keys}")
+                    log.warning(f"{self.fieldset=} == {filestream}")
+                    log.warning(f"{self.index_protocol_version=} == {ALLOWED_PROTOCOL_VERSION}")
+                    return self
             else:
                 log.warning("Ignoring index file %r older than GRIB file", indexpath)
         except Exception:

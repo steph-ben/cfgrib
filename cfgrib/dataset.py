@@ -625,6 +625,7 @@ def dict_merge(master, update):
         elif master[key] == value:
             pass
         else:
+            # TODO : Merge dimensions if possible
             raise DatasetBuildError(
                 "key present and new value is different: "
                 "key=%r value=%r new_value=%r" % (key, master[key], value)
@@ -666,8 +667,23 @@ def build_dataset_components(
     variables = {}  # type: T.Dict[str, Variable]
     filter_by_keys = index.filter_by_keys
 
-    for param_id in index.get("paramId", []):
-        var_index = index.subindex(paramId=param_id)
+    # TODO : loop on each couple paramId/levelType/stepType !!!!!
+    unique_param_list = []
+    if False:
+        for param_id in index.get('paramId'):
+            unique_param_list.append({'paramId': param_id})
+    else:
+        for param_id in index.get('paramId', []):
+            for type_of_level in index.get('typeOfLevel', []):
+                for step_type in index.get('stepType', []):
+                    unique_param_list.append({'paramId': param_id, 'typeOfLevel': type_of_level, 'stepType': step_type})
+
+    #for param_id in index.get("paramId", []):
+    for unique_param_filter in unique_param_list:
+        var_index = index.subindex(**unique_param_filter)
+        if not var_index.header_values:
+            # This unique combination doesn't exists
+            continue
         try:
             dims, data_var, coord_vars = build_variable_components(
                 var_index,
@@ -693,12 +709,15 @@ def build_dataset_components(
                 error_message += "\n    filter_by_keys=%r" % fbk
             raise DatasetBuildError(error_message, key, fbks)
         short_name = data_var.attributes.get("GRIB_shortName", "paramId_%d" % param_id)
+        type_of_level = data_var.attributes.get("GRIB_typeOfLevel")
+        step_type = data_var.attributes.get("GRIB_stepType")
+        unique_name = f"{short_name}__{type_of_level}__{step_type}"
         var_name = data_var.attributes.get("GRIB_cfVarName", "unknown")
         if "parameter" in encode_cf and var_name not in ("undef", "unknown"):
             short_name = var_name
         try:
             dict_merge(variables, coord_vars)
-            dict_merge(variables, {short_name: data_var})
+            dict_merge(variables, {unique_name: data_var})
             dict_merge(dimensions, dims)
         except ValueError:
             if errors == "ignore":
@@ -706,7 +725,7 @@ def build_dataset_components(
             elif errors == "raise":
                 raise
             else:
-                log.exception("skipping variable: paramId==%r shortName=%r", param_id, short_name)
+                log.warning(f"skipping variable: paramId=={unique_param_filter} shortName={short_name} {unique_name}")
     encoding = {"source": index.source(), "filter_by_keys": filter_by_keys, "encode_cf": encode_cf}
     attributes = build_dataset_attributes(index, filter_by_keys, encoding)
     return dimensions, variables, attributes, encoding
